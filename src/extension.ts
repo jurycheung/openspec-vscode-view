@@ -256,7 +256,18 @@ export function activate(context: vscode.ExtensionContext): void {
     },
 
     // ── 命令 ─────────────────────────────────────────────
-    vscode.commands.registerCommand('openspec-vscode-view.refresh', () => refreshAll('manual')),
+    vscode.commands.registerCommand(
+      'openspec-vscode-view.refresh',
+      () =>
+        // 进度指示挂在树视图上：让手动刷新有可见反馈（数据通常已由对账保持最新）
+        vscode.window.withProgress(
+          {
+            location: { viewId: 'openspec-vscode-view.changes' },
+            title: '正在刷新 OpenSpec 状态…',
+          },
+          () => refreshAll('manual')
+        )
+    ),
 
     vscode.commands.registerCommand('openspec-vscode-view.configure', () => configureScanPaths()),
 
