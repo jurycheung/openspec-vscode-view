@@ -1,0 +1,16 @@
+src/**
+test/**
+scripts/**
+.github/**
+node_modules/**
+out
+.smoke
+.tooling
+.vscode
+**/*.map
+*.vsix
+tsconfig.json
+.gitignore
+.git
+.vscodeignore
+dist/test/**

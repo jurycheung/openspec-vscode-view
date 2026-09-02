@@ -1,0 +1,136 @@
+{
+  "name": "openspec-vscode-view",
+  "displayName": "OpenSpec VSCode View",
+  "description": "OpenSpec 变更流程可视化：自动检测（自定义）schema 与变更，按 change 展示阶段与输出件，支持点击跳转与编辑区内可视化",
+  "version": "0.1.0",
+  "publisher": "sef",
+  "author": "JuryCheung",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JuryCheung/openspec-vscode-view.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JuryCheung/openspec-vscode-view/issues"
+  },
+  "homepage": "https://github.com/JuryCheung/openspec-vscode-view#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "openspec",
+    "spec-driven",
+    "workflow",
+    "process",
+    "vscode",
+    "extension"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "openspec-vscode-view",
+          "title": "OpenSpec 流程",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "openspec-vscode-view": [
+        {
+          "id": "openspec-vscode-view.changes",
+          "name": "变更",
+          "when": "true"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "openspec-vscode-view.refresh",
+        "title": "OpenSpec VSCode View：刷新状态",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "openspec-vscode-view.configure",
+        "title": "OpenSpec VSCode View：配置扫描路径",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "openspec-vscode-view.showProcessView",
+        "title": "OpenSpec VSCode View：打开流程可视化",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "openspec-vscode-view.openOutputFile",
+        "title": "OpenSpec VSCode View：打开输出件"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "openspec-vscode-view.refresh",
+          "when": "view == openspec-vscode-view.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "openspec-vscode-view.configure",
+          "when": "view == openspec-vscode-view.changes",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "openspec-vscode-view.showProcessView",
+          "when": "view == openspec-vscode-view.changes && viewItem == change",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OpenSpec VSCode View",
+      "properties": {
+        "openspec-vscode-view.cliPath": {
+          "type": "string",
+          "default": "openspec",
+          "description": "openspec CLI 可执行文件路径（默认从 PATH 中查找）。例如 C:\\Users\\me\\AppData\\Roaming\\npm\\openspec.cmd"
+        },
+        "openspec-vscode-view.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "监听 openspec/ 目录变化并自动刷新状态"
+        },
+        "openspec-vscode-view.openBeside": {
+          "type": "boolean",
+          "default": true,
+          "description": "点击输出件时在旁侧编辑组打开文件"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p . && node scripts/vendor.js",
+    "watch": "tsc -p . --watch",
+    "typecheck": "tsc --noEmit",
+    "smoke": "npm run compile && node dist/test/smoke.js",
+    "smoke:real": "node dist/test/smoke.js",
+    "package": "npm run typecheck && npm run compile && npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.4"
+  }
+}
