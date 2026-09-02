@@ -68,12 +68,12 @@ Project (shown with multi-root workspaces)
 1. Install (either way):
    ```bash
    # Option 1: download the vsix from GitHub Releases (recommended)
-   code --install-extension openspec-vscode-view-0.1.2.vsix
+   code --install-extension openspec-vscode-view-0.1.3.vsix
 
    # Option 2: build from source
    npm install
-   npm run package        # produces openspec-vscode-view-0.1.2.vsix
-   code --install-extension openspec-vscode-view-0.1.2.vsix
+   npm run package        # produces openspec-vscode-view-0.1.3.vsix
+   code --install-extension openspec-vscode-view-0.1.3.vsix
    ```
 2. Make sure the `openspec` CLI is available (`npm i -g @fission-ai/openspec`), or configure:
    - `openspec-vscode-view.cliPath`: path to the CLI executable (default `openspec`)

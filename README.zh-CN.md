@@ -66,12 +66,12 @@ English | [简体中文](README.zh-CN.md)
 1. 安装（任选其一）：
    ```bash
    # 方式一：从 GitHub Releases 下载 vsix（推荐）
-   code --install-extension openspec-vscode-view-0.1.2.vsix
+   code --install-extension openspec-vscode-view-0.1.3.vsix
 
    # 方式二：从源码构建
    npm install
-   npm run package        # 生成 openspec-vscode-view-0.1.2.vsix
-   code --install-extension openspec-vscode-view-0.1.2.vsix
+   npm run package        # 生成 openspec-vscode-view-0.1.3.vsix
+   code --install-extension openspec-vscode-view-0.1.3.vsix
    ```
 2. 确保 `openspec` CLI 可用（`npm i -g @fission-ai/openspec`），或在设置中指定：
    - `openspec-vscode-view.cliPath`：CLI 可执行文件路径（默认 `openspec`）
