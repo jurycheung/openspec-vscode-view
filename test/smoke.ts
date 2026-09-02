@@ -20,6 +20,7 @@ import {
   ensureConfigFile,
   loadSefConfig,
   normalizeScanInput,
+  samePathSet,
   saveSefConfig,
   sefConfigFile,
 } from '../src/scanConfig';
@@ -204,6 +205,12 @@ function runScanConfigTests(): void {
     assert(normalizeScanInput('D:\\work\\a', home) !== null, 'Windows 盘符绝对路径接受');
     assert(normalizeScanInput('D:/work/a', home) !== null, 'Windows 正斜杠绝对路径接受');
     assert(normalizeScanInput('/usr/local/x', home) !== null, 'POSIX 绝对路径接受');
+
+    // 根集合对账（samePathSet）：顺序无关，跨平台大小写行为随 pathKey
+    assert(samePathSet(['D:\\work\\a', 'D:/work/b'], ['D:/work/b', 'D:\\work\\a']), '路径集合相等（顺序无关）');
+    assert(!samePathSet(['D:\\work\\a'], ['D:\\work\\a', 'D:\\work\\c']), '路径集合不等（数量不同）');
+    assert(!samePathSet(['D:\\work\\a'], ['D:\\work\\c']), '路径集合不等（元素不同）');
+    assert(samePathSet([], []), '空集合相等');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

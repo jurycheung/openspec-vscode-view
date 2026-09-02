@@ -108,3 +108,12 @@ export function pathKey(p: string): string {
   const norm = path.normalize(p).replace(/[\\/]+$/, '');
   return process.platform === 'win32' ? norm.toLowerCase() : norm;
 }
+
+/** 路径集合相等性（顺序无关，大小写规则同 pathKey）：用于根集合对账 */
+export function samePathSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const set = new Set(a.map(pathKey));
+  return b.map(pathKey).every((k) => set.has(k));
+}

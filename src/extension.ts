@@ -10,7 +10,7 @@
 
 import * as os from 'node:os';
 import * as vscode from 'vscode';
-import { detectOpenspecModels, hasOpenspecLayout, type OpenSpecModel } from './openspec';
+import { detectOpenspecModels, detectOpenspecRoots, hasOpenspecLayout, type OpenSpecModel } from './openspec';
 import { ChangesTreeProvider } from './tree';
 import { ProcessViewCoordinator } from './webview';
 import {
@@ -18,6 +18,7 @@ import {
   loadSefConfig,
   normalizeScanInput,
   pathKey,
+  samePathSet,
   saveSefConfig,
   sefConfigFile,
   type SefConfig,
@@ -74,9 +75,20 @@ export function activate(context: vscode.ExtensionContext): void {
     updateTreeMessage();
   };
 
+  /**
+   * 根集合对账：当前磁盘上具备 openspec 结构的根，是否与已加载 models 一致。
+   * 根目录被删除、openspec/ 被移走、新根出现、配置文件被手改，都会导致不一致。
+   */
+  const rootSetMatches = (): boolean => {
+    const desired = detectOpenspecRoots(loadSefConfig().scanPaths)
+      .filter((r) => hasOpenspecLayout(r.fsPath))
+      .map((r) => pathKey(r.fsPath));
+    return samePathSet(desired, models.map((m) => pathKey(m.root.fsPath)));
+  };
+
   const refreshAll = async (reason?: string): Promise<void> => {
-    if (models.length === 0) {
-      // 工作区可能刚建好 openspec/，或刚写好 ~/.sef/config.json —— 重新探测
+    if (models.length === 0 || !rootSetMatches()) {
+      // 根集合变化（目录被删/新增/恢复，或刚写好 ~/.sef/config.json）—— 全量重探
       rebuild();
       return;
     }
