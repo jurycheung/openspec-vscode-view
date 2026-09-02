@@ -78,24 +78,44 @@ export class ChangesTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private models: OpenSpecModel[] = [];
+  private modelSubscriptions: vscode.Disposable[] = [];
+  private lastFingerprint = '';
 
   constructor(models: OpenSpecModel[]) {
     this.setModels(models);
   }
 
   setModels(models: OpenSpecModel[]): void {
-    for (const m of this.models) {
-      m.onDidChange(this.fire, this);
+    for (const d of this.modelSubscriptions) {
+      d.dispose();
     }
+    this.modelSubscriptions = [];
     this.models = models;
     for (const m of models) {
-      m.onDidChange(this.fire, this);
+      this.modelSubscriptions.push(m.onDidChange(this.onModelChanged, this));
     }
-    this.fire();
+    this.onModelChanged();
   }
 
-  private fire(): void {
+  /**
+   * 只有视图数据真正变化时才 fire：
+   * 树 refresh 会销毁并重建全部节点，高频 fire（如周期对账但数据未变）会不断
+   * 打断展开状态并制造「点击撞上刷新」的竞态窗口。
+   */
+  private onModelChanged(): void {
+    const fp = this.fingerprint();
+    if (fp === this.lastFingerprint) {
+      return;
+    }
+    this.lastFingerprint = fp;
     this._onDidChangeTreeData.fire();
+  }
+
+  /** 渲染所依赖的全部数据指纹：加载态 + CLI 结果类型 + 变更视图模型 */
+  private fingerprint(): string {
+    return this.models
+      .map((m) => `${m.hasLoaded ? 1 : 0}|${m.lastCliResult?.kind ?? ''}|${JSON.stringify(m.changes)}`)
+      .join('||');
   }
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
@@ -255,11 +275,13 @@ export class ChangesTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         `\n点击打开流程可视化`
       );
     }
-    // 点击 change 直接打开流程可视化
+    // 点击 change 直接打开流程可视化。
+    // 注意：TreeItem 命令不能带 arguments —— 带参数的命令会被 VSCode 转为
+    // 「委托命令 + 参数缓存」，而缓存随树 refresh 全量销毁，点击撞上刷新即报
+    // “Actual command not found”。上下文由命令处理器从 treeView.selection 解析。
     item.command = {
       command: 'openspec-vscode-view.showProcessView',
       title: '打开流程可视化',
-      arguments: [node.modelIndex, c.name],
     };
     item.contextValue = 'change';
     return item;
@@ -284,10 +306,10 @@ export class ChangesTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       (hasFiles ? `输出件：${a.displayFiles.join('、')}` : '尚无输出件')
     );
     if (!hasFiles) {
+      // 无参数（原因见 toChangeItem），处理器从 treeView.selection 解析所属 change
       item.command = {
         command: 'openspec-vscode-view.showProcessView',
         title: '打开流程可视化',
-        arguments: [node.node.modelIndex, node.node.change.name],
       };
     }
     item.contextValue = hasFiles ? 'artifact-with-files' : 'artifact';
@@ -304,7 +326,6 @@ export class ChangesTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     item.command = {
       command: 'openspec-vscode-view.openOutputFile',
       title: '打开输出件',
-      arguments: [node.filePath, false],
     };
     item.contextValue = 'outputFile';
     return item;

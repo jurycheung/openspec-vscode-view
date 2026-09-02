@@ -294,6 +294,16 @@ export function activate(context: vscode.ExtensionContext): void {
           coordinator.show(0, modelIndexOrName);
           return;
         }
+        // 树节点点击（无参数调用）：从当前选中项解析上下文
+        const node = treeView.selection[0];
+        if (node && node.kind === 'change') {
+          coordinator.show(node.modelIndex, node.change.name);
+          return;
+        }
+        if (node && node.kind === 'artifact') {
+          coordinator.show(node.node.modelIndex, node.node.change.name);
+          return;
+        }
         await coordinator.showPick();
       }
     ),
@@ -301,13 +311,26 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'openspec-vscode-view.openOutputFile',
       async (filePath?: string, beside?: boolean) => {
-        if (!filePath) {
+        let target = filePath;
+        let useBeside = beside;
+        if (!target) {
+          // 树节点点击（无参数调用）：从当前选中项解析
+          const node = treeView.selection[0];
+          if (node && node.kind === 'file') {
+            target = node.filePath;
+          }
+        }
+        if (!target) {
           return;
         }
-        const useBeside = beside ?? vscode.workspace.getConfiguration('openspec-vscode-view').get<boolean>('openBeside', true);
+        if (useBeside === undefined) {
+          useBeside = vscode.workspace
+            .getConfiguration('openspec-vscode-view')
+            .get<boolean>('openBeside', true);
+        }
         await vscode.commands.executeCommand(
           'vscode.open',
-          vscode.Uri.file(filePath),
+          vscode.Uri.file(target),
           useBeside ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active
         );
       }
