@@ -66,17 +66,18 @@ English | [简体中文](README.zh-CN.md)
 1. 安装（任选其一）：
    ```bash
    # 方式一：从 GitHub Releases 下载 vsix（推荐）
-   code --install-extension openspec-vscode-view-0.1.0.vsix
+   code --install-extension openspec-vscode-view-0.1.1.vsix
 
    # 方式二：从源码构建
    npm install
-   npm run package        # 生成 openspec-vscode-view-0.1.0.vsix
-   code --install-extension openspec-vscode-view-0.1.0.vsix
+   npm run package        # 生成 openspec-vscode-view-0.1.1.vsix
+   code --install-extension openspec-vscode-view-0.1.1.vsix
    ```
 2. 确保 `openspec` CLI 可用（`npm i -g @fission-ai/openspec`），或在设置中指定：
    - `openspec-vscode-view.cliPath`：CLI 可执行文件路径（默认 `openspec`）
    - `openspec-vscode-view.autoRefresh`：文件监听自动刷新（默认开）
    - `openspec-vscode-view.openBeside`：点击输出件在旁侧打开（默认开）
+   - `openspec-vscode-view.reconcileInterval`：周期性状态对账间隔（秒，默认 15，0 关闭）——兜底文件监听漏报（如删除 change 目录）
 3. 打开包含 `openspec/` 的项目，活动栏出现「OpenSpec 流程」图标；点击任意 change 或执行命令
    **`OpenSpec VSCode View：打开流程可视化`** 查看过程视图。
 

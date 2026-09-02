@@ -193,10 +193,15 @@ export class OpenSpecModel {
       return;
     }
     const base = vscode.Uri.file(this.root.fsPath);
+    // 多模式叠加：不同 watcher 后端对「目录删除」的上报行为不一致，
+    // 组合 精确路径 / 单层子项 / 递归通配 以最大化事件覆盖面；重复事件由防抖合并
     const patterns = [
       new vscode.RelativePattern(base, 'openspec/config.yaml'),
-      new vscode.RelativePattern(base, 'openspec/schemas/**'),
+      new vscode.RelativePattern(base, 'openspec/changes'),
+      new vscode.RelativePattern(base, 'openspec/changes/*'),
       new vscode.RelativePattern(base, 'openspec/changes/**'),
+      new vscode.RelativePattern(base, 'openspec/schemas/*'),
+      new vscode.RelativePattern(base, 'openspec/schemas/**'),
     ];
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);

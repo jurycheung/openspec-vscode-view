@@ -86,6 +86,44 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
+  // ── 刷新兜底：个别 watcher 后端不上报「目录删除」事件，多层对账保证最终一致 ──
+  // 1) 周期对账（reconcileInterval 秒，窗口聚焦时执行；0 = 关闭）
+  let reconcileTimer: NodeJS.Timeout | undefined;
+  const scheduleReconcile = (): void => {
+    if (reconcileTimer) {
+      clearTimeout(reconcileTimer);
+      reconcileTimer = undefined;
+    }
+    const sec = vscode.workspace
+      .getConfiguration('openspec-vscode-view')
+      .get<number>('reconcileInterval', 15);
+    if (sec <= 0) {
+      return;
+    }
+    reconcileTimer = setTimeout(() => {
+      reconcileTimer = undefined;
+      if (vscode.window.state.focused) {
+        void refreshAll();
+      }
+      scheduleReconcile();
+    }, sec * 1000);
+  };
+  scheduleReconcile();
+
+  // 2) 窗口重新聚焦时对账（覆盖在外部资源管理器删除/改动后切回的场景）
+  const onWindowFocus = vscode.window.onDidChangeWindowState((s) => {
+    if (s.focused) {
+      void refreshAll();
+    }
+  });
+
+  // 3) 树视图重新可见时对账
+  const onTreeVisible = treeView.onDidChangeVisibility((e) => {
+    if (e.visible) {
+      void refreshAll();
+    }
+  });
+
   /** 配置额外扫描路径（保存在 ~/.sef/config.json） */
   const configureScanPaths = async (): Promise<void> => {
     const picked = await vscode.window.showQuickPick(buildScanPathItems(), {
@@ -191,10 +229,22 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeWorkspaceFolders(() => rebuild()),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('openspec-vscode-view')) {
+        scheduleReconcile();
         void refreshAll();
       }
     }),
     coordinator,
+    onWindowFocus,
+    onTreeVisible,
+
+    // 对账定时器
+    {
+      dispose: () => {
+        if (reconcileTimer) {
+          clearTimeout(reconcileTimer);
+        }
+      },
+    },
 
     // 扩展停用时释放当前模型（含 FileSystemWatcher 与事件订阅）
     {

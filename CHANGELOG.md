@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1（2026-09-02）
+
+修复：删除 change 目录后，树视图不自动移除该变更（个别文件监听后端不产生目录删除事件）。
+
+- 文件监听补充 `openspec/changes`、`openspec/changes/*`、`openspec/schemas/*` 三种模式，覆盖不同后端的事件上报路径
+- 窗口重新聚焦、树视图重新可见时自动对账刷新
+- 新增设置 `openspec-vscode-view.reconcileInterval`：周期性状态对账（默认 15 秒，窗口聚焦时执行，0 关闭），兜底一切漏报场景
+
 ## 0.1.0（2026-09-01）
 
 首个公开发布版本。

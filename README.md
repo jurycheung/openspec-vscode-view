@@ -68,17 +68,18 @@ Project (shown with multi-root workspaces)
 1. Install (either way):
    ```bash
    # Option 1: download the vsix from GitHub Releases (recommended)
-   code --install-extension openspec-vscode-view-0.1.0.vsix
+   code --install-extension openspec-vscode-view-0.1.1.vsix
 
    # Option 2: build from source
    npm install
-   npm run package        # produces openspec-vscode-view-0.1.0.vsix
-   code --install-extension openspec-vscode-view-0.1.0.vsix
+   npm run package        # produces openspec-vscode-view-0.1.1.vsix
+   code --install-extension openspec-vscode-view-0.1.1.vsix
    ```
 2. Make sure the `openspec` CLI is available (`npm i -g @fission-ai/openspec`), or configure:
    - `openspec-vscode-view.cliPath`: path to the CLI executable (default `openspec`)
    - `openspec-vscode-view.autoRefresh`: auto refresh via file watching (default on)
    - `openspec-vscode-view.openBeside`: open output files in the beside editor group (default on)
+   - `openspec-vscode-view.reconcileInterval`: periodic state reconciliation interval in seconds (default 15, 0 disables) — a safety net for missed watch events (e.g. deleting a change directory)
 3. Open a project containing `openspec/`; the "OpenSpec pipeline" icon appears in the Activity bar. Click any change or run the command
    **`OpenSpec VSCode View：打开流程可视化`** (id: `openspec-vscode-view.showProcessView`) to open the process view.
 
