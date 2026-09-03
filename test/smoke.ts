@@ -24,6 +24,7 @@ import {
   saveSefConfig,
   sefConfigFile,
 } from '../src/scanConfig';
+import { computeDagLayout, type DagLayout, type DagNodeInput, type DagStatus } from '../src/dag';
 
 let failures = 0;
 
@@ -299,6 +300,61 @@ function runCurrentRulesTests(): void {
   assertEq(fresh.currentArtifactId, 'a', '无完成阶段时当前 = 第一个 ready');
 }
 
+/** 阶段依赖 DAG 布局（纯函数） */
+function runDagTests(): void {
+  console.log('— dag（分层布局）—');
+  const node = (id: string, requires: string[], status: DagStatus = 'ready'): DagNodeInput => ({
+    id,
+    requires,
+    status,
+    isCurrent: false,
+  });
+
+  // 线性链：a → b → c，逐层递进
+  const chain = computeDagLayout([node('a', []), node('b', ['a']), node('c', ['b'])]);
+  assertEq(chain.nodes.map((n) => n.level).join(','), '0,1,2', '线性链按依赖逐层递进');
+  assertEq(chain.edges.length, 2, '线性链连线数 = 依赖数');
+  assertEq(String(chain.hasCycle), 'false', '线性链无环');
+  assert(chain.width > chain.nodes.length, '画布宽度随层数增长');
+
+  // 菱形：a → (b, c) → d，b/c 同层（可并行）
+  const diamond = computeDagLayout([
+    node('a', []),
+    node('b', ['a']),
+    node('c', ['a']),
+    node('d', ['b', 'c']),
+  ]);
+  const lv = (l: DagLayout, id: string): number => l.nodes.find((n) => n.id === id)!.level;
+  assertEq(`${lv(diamond, 'b')},${lv(diamond, 'c')}`, '1,1', '菱形分叉节点同层（可并行）');
+  assertEq(String(lv(diamond, 'd')), '2', '菱形汇合节点在下一层');
+  assertEq(diamond.nodes.find((n) => n.id === 'b')!.row, 0, '同层行号保持声明顺序');
+  assertEq(diamond.nodes.find((n) => n.id === 'c')!.row, 1, '同层第二个节点行号递增');
+
+  // 连线着色：done 依赖 → ok；被阻塞目标 + 未完成依赖 → miss；其余 → pending
+  const colored = computeDagLayout([
+    node('done1', [], 'done'),
+    node('pend', []),
+    node('t-ok', ['done1']),
+    node('t-miss', ['pend'], 'blocked'),
+    node('t-pending', ['pend']),
+  ]);
+  const edgeCls = (l: DagLayout, from: string, to: string): string =>
+    l.edges.find((e) => e.from === from && e.to === to)?.cls ?? 'MISSING';
+  assertEq(edgeCls(colored, 'done1', 't-ok'), 'ok', '已完成依赖连线 = ok');
+  assertEq(edgeCls(colored, 'pend', 't-miss'), 'miss', '阻塞目标的缺失依赖连线 = miss');
+  assertEq(edgeCls(colored, 'pend', 't-pending'), 'pending', '进行中依赖连线 = pending');
+
+  // 环：a → b → a，不死循环并标记 hasCycle
+  const cyc = computeDagLayout([node('a', ['b']), node('b', ['a']), node('c', ['a'])]);
+  assertEq(String(cyc.hasCycle), 'true', '互相依赖标记为环');
+  assertEq(cyc.nodes.length, 3, '环场景节点不丢失');
+
+  // 未知依赖：不参与布局、不产生连线
+  const orphan = computeDagLayout([node('a', ['ghost'])]);
+  assertEq(orphan.edges.length, 0, '未知依赖不产生连线');
+  assertEq(String(orphan.nodes[0].level), '0', '未知依赖不影响分层');
+}
+
 function main(): void {
   const arg = process.argv[2];
   if (arg) {
@@ -307,6 +363,7 @@ function main(): void {
     runFixtures();
     runScanConfigTests();
     runCurrentRulesTests();
+    runDagTests();
   }
   if (failures > 0) {
     console.error(`\n冒烟测试失败：${failures} 项`);

@@ -9,6 +9,12 @@
 import * as vscode from 'vscode';
 import type { ArtifactView, ChangeView, LoadedSchema } from './core';
 import type { OpenSpecModel } from './openspec';
+import {
+  computeDagLayout,
+  DAG_NODE_H,
+  DAG_NODE_W,
+  type DagNode,
+} from './dag';
 
 // ---------------------------------------------------------------------------
 // 面板协调器
@@ -374,6 +380,48 @@ const PAGE_STYLES = `
     border-radius: 10px; padding: 18px 22px; margin-top: 20px; white-space: pre-wrap;
   }
   .schema-desc { color: var(--muted); margin: 0 0 16px; }
+  .viewtoggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 7px;
+    overflow: hidden; margin: 0 0 16px;
+  }
+  .viewtoggle .vt {
+    border: none; background: transparent; color: var(--muted);
+    font-size: 12px; font-family: var(--vscode-font-family);
+    padding: 5px 16px; cursor: pointer;
+  }
+  .viewtoggle .vt.active { background: var(--accent); color: #fff; font-weight: 600; }
+  body[data-view="dag"] .view-pipeline { display: none; }
+  body[data-view="pipeline"] .view-dag { display: none; }
+  .svgwrap {
+    overflow: auto; border: 1px solid var(--border); border-radius: 10px;
+    padding: 4px; background: var(--vscode-editor-background);
+  }
+  .edge { stroke: var(--muted); fill: none; stroke-width: 1.5; opacity: .8; }
+  .edge.ok { stroke: var(--ok); }
+  .edge.miss { stroke: var(--err); stroke-dasharray: 5 4; }
+  .dag-node { cursor: pointer; }
+  .dag-node rect {
+    fill: var(--chip-bg); stroke: var(--muted); stroke-width: 1.4;
+    transition: fill .15s ease;
+  }
+  .dag-node:hover rect { fill: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .dag-node.done rect { stroke: var(--ok); }
+  .dag-node.ready rect { stroke: var(--accent); }
+  .dag-node.blocked rect { stroke: var(--err); }
+  .dag-node.skipped rect { stroke: var(--warn); stroke-dasharray: 4 3; }
+  .dag-node.current rect { stroke-width: 2.2; animation: dagpulse 2s ease-in-out infinite; }
+  .dag-node.current text { fill: var(--accent); font-weight: 600; }
+  .dag-node.selected rect { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .dag-node text {
+    fill: var(--vscode-foreground); font-size: 11.5px;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  @keyframes dagpulse { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: .45; } }
+  .dag-legend { color: var(--muted); font-size: 11.5px; margin: 8px 0 4px; }
+  .dag-legend .lg-ok { color: var(--ok); }
+  .dag-legend .lg-miss { color: var(--err); }
+  .dag-detail .card { display: none; }
+  .dag-detail .card.visible { display: block; }
 `;
 
 function pageChrome(nonce: string, body: string, extraScript = ''): string {
@@ -402,6 +450,16 @@ ${body}
     }
     if (e.target.closest('[data-action="reveal"]')) {
       vscode.postMessage({ type: 'revealChange' });
+      return;
+    }
+    const tab = e.target.closest('[data-view]');
+    if (tab) {
+      setView(tab.getAttribute('data-view') ?? 'pipeline');
+      return;
+    }
+    const dagNode = e.target.closest('[data-artifact]');
+    if (dagNode) {
+      selectArtifact(dagNode.getAttribute('data-artifact') ?? '');
     }
   });
   ${extraScript}
@@ -443,7 +501,8 @@ function artifactCardHtml(
   artifact: ArtifactView,
   index: number,
   change: ChangeView,
-  schema: LoadedSchema | undefined
+  schema: LoadedSchema | undefined,
+  extraAttr = ''
 ): string {
   const meta = STATUS_META[artifact.status];
   const isCurrent = change.currentArtifactId === artifact.id;
@@ -470,7 +529,7 @@ function artifactCardHtml(
   const schemaDesc = schema?.artifacts.get(artifact.id)?.description ?? artifact.description;
 
   return `
-  <li class="card ${meta.cls}${isCurrent ? ' current' : ''}">
+  <li${extraAttr} class="card ${meta.cls}${isCurrent ? ' current' : ''}">
     <span class="dot ${meta.cls}">${meta.icon}</span>
     <div class="card-head">
       <h3>${index + 1}. ${escapeHtml(artifact.id)}</h3>
@@ -481,6 +540,73 @@ function artifactCardHtml(
     ${depChips}
     ${filesHtml}
   </li>`;
+}
+
+/** 依赖图视图：SVG 分层 DAG + 选中阶段的详情卡片（点击图上节点联动） */
+function dagViewHtml(change: ChangeView, schema: LoadedSchema | undefined): string {
+  const layout = computeDagLayout(
+    change.artifacts.map((a) => ({
+      id: a.id,
+      requires: a.requires,
+      status: a.status,
+      isCurrent: change.currentArtifactId === a.id,
+    }))
+  );
+
+  const edgePath = (from: DagNode, to: DagNode): string => {
+    const sx = from.x + DAG_NODE_W;
+    const sy = from.y + DAG_NODE_H / 2;
+    const tx = to.x;
+    const ty = to.y + DAG_NODE_H / 2;
+    const mx = (sx + tx) / 2;
+    return `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tx} ${ty}`;
+  };
+
+  const nodeById = new Map(layout.nodes.map((n) => [n.id, n]));
+  const edges = layout.edges
+    .map((e) => {
+      const f = nodeById.get(e.from);
+      const t = nodeById.get(e.to);
+      if (!f || !t) {
+        return '';
+      }
+      return `<path class="edge ${e.cls}" d="${edgePath(f, t)}"/>`;
+    })
+    .join('\n');
+
+  const nodes = layout.nodes
+    .map((n) => {
+      const label = n.id.length > 22 ? `${n.id.slice(0, 21)}…` : n.id;
+      const cls = `dag-node ${n.status}${n.isCurrent ? ' current' : ''}`;
+      const cx = n.x + DAG_NODE_W / 2;
+      const cy = n.y + DAG_NODE_H / 2 + 4;
+      return (
+        `<g class="${cls}" data-artifact="${escapeHtml(n.id)}" tabindex="0" role="button">` +
+        `<rect x="${n.x}" y="${n.y}" width="${DAG_NODE_W}" height="${DAG_NODE_H}" rx="9"/>` +
+        `<text x="${cx}" y="${cy}" text-anchor="middle">${escapeHtml(label)}</text>` +
+        `<title>${escapeHtml(n.id)}（${STATUS_META[n.status].label}）</title>` +
+        `</g>`
+      );
+    })
+    .join('\n');
+
+  const svg =
+    `<svg width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" ` +
+    `xmlns="http://www.w3.org/2000/svg" role="img" aria-label="阶段依赖图">${edges}${nodes}</svg>`;
+
+  const cycleWarn = layout.hasCycle
+    ? '<p class="nofile">⚠ 依赖声明存在环路，布局为近似结果；请检查 schema 的 requires</p>'
+    : '';
+
+  const detail = change.artifacts
+    .map((a, i) => artifactCardHtml(a, i, change, schema, ` data-artifact-card="${escapeHtml(a.id)}"`))
+    .join('\n');
+
+  return `
+  <div class="svgwrap">${svg}</div>
+  ${cycleWarn}
+  <p class="dag-legend">同层阶段可并行 · 连线：<span class="lg-ok">绿＝依赖已完成</span> · <span class="lg-miss">红虚＝依赖缺失</span> · 灰＝依赖进行中</p>
+  <ul class="stepper dag-detail">${detail}</ul>`;
 }
 
 function renderChangeHtml(
@@ -502,9 +628,18 @@ function renderChangeHtml(
   const body = `
   ${headerHtml(change)}
   ${schemaLine}
-  <ul class="stepper">
-    ${change.artifacts.map((a, i) => artifactCardHtml(a, i, change, schema)).join('\n')}
-  </ul>
+  <div class="viewtoggle" role="tablist">
+    <button class="vt" data-view="pipeline" type="button">管道视图</button>
+    <button class="vt" data-view="dag" type="button">依赖图</button>
+  </div>
+  <div class="view-pipeline">
+    <ul class="stepper">
+      ${change.artifacts.map((a, i) => artifactCardHtml(a, i, change, schema)).join('\n')}
+    </ul>
+  </div>
+  <div class="view-dag">
+    ${dagViewHtml(change, schema)}
+  </div>
   ${warnings.length ? `<ul class="warnlist">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>` : ''}
   <div class="actions">
     <button class="vsc" data-action="refresh">刷新状态</button>
@@ -512,7 +647,41 @@ function renderChangeHtml(
   </div>
   <p class="foot">数据来源：<code>openspec status --all --json</code> · 项目 ${escapeHtml(model.projectLabel)} · change 目录 <code>${escapeHtml(change.changeRoot)}</code></p>`;
 
-  return pageChrome(nonce, body);
+  return pageChrome(nonce, body, `
+    function setView(v) {
+      document.body.dataset.view = v === 'dag' ? 'dag' : 'pipeline';
+      document.querySelectorAll('[data-view]').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-view') === document.body.dataset.view);
+      });
+      const s = vscode.getState() || {};
+      s.view = document.body.dataset.view;
+      vscode.setState(s);
+    }
+    function selectArtifact(id) {
+      if (!id) { return; }
+      document.querySelectorAll('[data-artifact-card]').forEach(function (c) {
+        c.classList.toggle('visible', c.getAttribute('data-artifact-card') === id);
+      });
+      document.querySelectorAll('.dag-node').forEach(function (n) {
+        n.classList.toggle('selected', n.getAttribute('data-artifact') === id);
+      });
+      const card = document.querySelector('[data-artifact-card="' + id + '"]');
+      if (card) { card.scrollIntoView({ block: 'nearest' }); }
+      const s = vscode.getState() || {};
+      s.selected = id;
+      vscode.setState(s);
+    }
+    (function init() {
+      const st = vscode.getState() || {};
+      setView(st.view === 'dag' ? 'dag' : 'pipeline');
+      let sel = typeof st.selected === 'string' ? st.selected : '';
+      if (!sel || !document.querySelector('[data-artifact-card="' + sel + '"]')) {
+        const cur = document.querySelector('.dag-node.current') || document.querySelector('.dag-node');
+        sel = cur ? (cur.getAttribute('data-artifact') || '') : '';
+      }
+      selectArtifact(sel);
+    })();
+  `);
 }
 
 function renderProblemHtml(title: string, message: string): string {
