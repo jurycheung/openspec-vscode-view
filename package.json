@@ -50,6 +50,12 @@
           "id": "openspec-vscode-view.changes",
           "name": "变更",
           "when": "true"
+        },
+        {
+          "type": "webview",
+          "id": "openspec-vscode-view.board",
+          "name": "看板",
+          "when": "true"
         }
       ]
     },

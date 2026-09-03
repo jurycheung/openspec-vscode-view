@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as vscode from 'vscode';
 import { detectOpenspecModels, detectOpenspecRoots, hasOpenspecLayout, type OpenSpecModel } from './openspec';
 import { ChangesTreeProvider } from './tree';
-import { ProcessViewCoordinator } from './webview';
+import { BoardViewProvider, ProcessViewCoordinator } from './webview';
 import {
   ensureConfigFile,
   loadSefConfig,
@@ -67,6 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
     models = detectOpenspecModels(cfg.scanPaths);
     treeProvider.setModels(models);
     coordinator.setModels(models);
+    boardProvider.setModels();
     for (const m of models) {
       context.subscriptions.push(m.onDidChange(updateTreeMessage));
       m.watch(context);
@@ -135,6 +136,17 @@ export function activate(context: vscode.ExtensionContext): void {
       void refreshAll();
     }
   });
+
+  // 多变更看板（侧边栏 webview 视图）：按项目 → schema 分组，点击行直达流程面板
+  const boardProvider = new BoardViewProvider(
+    () => models,
+    context,
+    (modelIndex, changeName) => coordinator.show(modelIndex, changeName),
+    () => void refreshAll()
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(BoardViewProvider.viewId, boardProvider)
+  );
 
   /** 配置额外扫描路径（保存在 ~/.sef/config.json） */
   const configureScanPaths = async (): Promise<void> => {

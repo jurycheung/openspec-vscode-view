@@ -17,6 +17,161 @@ import {
 } from './dag';
 
 // ---------------------------------------------------------------------------
+// 多变更看板（侧边栏 webview 视图）
+// ---------------------------------------------------------------------------
+
+/** 按项目 → schema 分组展示全部变更；点击行直达流程面板 */
+export class BoardViewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewId = 'openspec-vscode-view.board';
+
+  private view: vscode.WebviewView | undefined;
+  private listeners: vscode.Disposable[] = [];
+
+  constructor(
+    private readonly getModels: () => OpenSpecModel[],
+    private readonly context: vscode.ExtensionContext,
+    private readonly showChange: (modelIndex: number, changeName: string) => void,
+    private readonly refresh: () => void
+  ) {}
+
+  /** 模型集合或内容变化时调用；重置事件订阅并重渲染 */
+  setModels(): void {
+    for (const d of this.listeners) {
+      d.dispose();
+    }
+    this.listeners = this.getModels().map((m) => m.onDidChange(() => this.rerender()));
+    this.rerender();
+  }
+
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.view = webviewView;
+    webviewView.webview.options = { enableScripts: true, localResourceRoots: [] };
+    webviewView.webview.onDidReceiveMessage(
+      (msg) => this.onMessage(msg),
+      undefined,
+      this.context.subscriptions
+    );
+    webviewView.onDidChangeVisibility(
+      () => {
+        if (webviewView.visible) {
+          this.rerender();
+        }
+      },
+      undefined,
+      this.context.subscriptions
+    );
+    this.rerender();
+  }
+
+  private rerender(): void {
+    if (this.view?.visible) {
+      this.view.webview.html = this.buildHtml();
+    }
+  }
+
+  private async onMessage(msg: {
+    type?: string;
+    modelIndex?: number;
+    changeName?: string;
+  }): Promise<void> {
+    switch (msg.type) {
+      case 'openChange':
+        if (typeof msg.modelIndex === 'number' && msg.changeName) {
+          this.showChange(msg.modelIndex, msg.changeName);
+        }
+        return;
+      case 'requestRefresh':
+        this.refresh();
+        return;
+    }
+  }
+
+  private buildHtml(): string {
+    const models = this.getModels();
+    if (models.length === 0) {
+      return pageChrome(
+        getNonce(),
+        `
+      <div class="hero">
+        <h2>未检测到 OpenSpec 项目</h2>
+        <p class="schema-desc">打开包含 openspec/ 的项目，或在设置中配置扫描路径。</p>
+        <div class="actions" style="justify-content:center">
+          <button class="vsc" data-action="refresh">重新扫描</button>
+        </div>
+      </div>`,
+        '',
+        'sidebar'
+      );
+    }
+    const anyLoading = models.some((m) => !m.hasLoaded);
+    const cliMissing = models.some((m) => m.lastCliResult?.kind === 'cli-missing');
+    const notice = cliMissing
+      ? '<p class="board-notice">⚠ 未找到 openspec CLI，状态可能不可用</p>'
+      : anyLoading
+        ? '<p class="board-notice">正在扫描中…</p>'
+        : '';
+
+    const sections = models
+      .map((m, mi) => {
+        const planned = m.changes.filter((c) => c.isPlanningComplete).length;
+        const groups = new Map<string, ChangeView[]>();
+        for (const c of m.changes) {
+          const g = groups.get(c.schemaName);
+          if (g) {
+            g.push(c);
+          } else {
+            groups.set(c.schemaName, [c]);
+          }
+        }
+        const groupHtml = [...groups.entries()]
+          .map(
+            ([schema, changes]) =>
+              `<div class="board-schema">schema：${escapeHtml(schema)} · ${changes.length}</div>${changes
+                .map((c) => this.rowHtml(mi, c))
+                .join('\n')}`
+          )
+          .join('\n');
+        return `
+      <section class="board-proj">
+        <h2><span class="mono">${escapeHtml(m.projectLabel)}</span><span class="badge">${m.changes.length} 变更 · ${planned} 已完成规划</span></h2>
+        ${groupHtml || '<p class="nofile">该项目暂无变更</p>'}
+      </section>`;
+      })
+      .join('\n');
+
+    return pageChrome(
+      getNonce(),
+      `${notice}${sections}
+      <div class="actions">
+        <button class="vsc" data-action="refresh">刷新全部</button>
+      </div>`,
+      '',
+      'sidebar'
+    );
+  }
+
+  private rowHtml(modelIndex: number, c: ChangeView): string {
+    const pct = c.totalCount > 0 ? Math.round((c.doneCount / c.totalCount) * 100) : 0;
+    const current = c.currentArtifactId
+      ? c.artifacts.find((a) => a.id === c.currentArtifactId)
+      : undefined;
+    const pill = c.loadError
+      ? '<span class="pill blocked">加载失败</span>'
+      : c.isPlanningComplete
+        ? '<span class="pill done">✓ 规划完成</span>'
+        : current
+          ? `<span class="pill ready">▶ ${escapeHtml(current.id)}</span>`
+          : '<span class="pill">—</span>';
+    return `
+    <button class="brow" data-model-index="${modelIndex}" data-change-name="${escapeHtml(c.name)}" title="点击打开流程可视化">
+      <span class="bname">${escapeHtml(c.name)}</span>
+      <span class="bmeta">${pill}<span>阶段 ${c.doneCount}/${c.totalCount}${c.skippedCount > 0 ? ` · 跳过 ${c.skippedCount}` : ''}</span></span>
+      <div class="mini"><div style="width:${pct}%"></div></div>
+    </button>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 面板协调器
 // ---------------------------------------------------------------------------
 
@@ -422,9 +577,39 @@ const PAGE_STYLES = `
   .dag-legend .lg-miss { color: var(--err); }
   .dag-detail .card { display: none; }
   .dag-detail .card.visible { display: block; }
+  body.sidebar { padding: 14px 14px 32px; }
+  .board-proj { margin: 0 0 20px; }
+  .board-proj h2 {
+    font-size: 13.5px; font-weight: 600; margin: 0 0 10px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .board-schema {
+    font-size: 11px; color: var(--muted); margin: 12px 0 6px;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  .brow {
+    display: block; width: 100%; text-align: left;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--vscode-editor-background);
+    padding: 8px 12px; margin: 0 0 8px; cursor: pointer;
+    color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: 12.5px;
+  }
+  .brow:hover { border-color: var(--accent); }
+  .brow:focus-visible { outline: 1px solid var(--accent); }
+  .brow .bname {
+    font-weight: 600; font-size: 12.5px;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  .brow .bmeta {
+    display: flex; gap: 8px; align-items: center; margin-top: 3px;
+    color: var(--muted); font-size: 11px;
+  }
+  .mini { height: 4px; border-radius: 999px; background: var(--chip-bg); overflow: hidden; margin-top: 6px; }
+  .mini > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--ok)); }
+  .board-notice { color: var(--warn); font-size: 12px; margin: 0 0 12px; }
 `;
 
-function pageChrome(nonce: string, body: string, extraScript = ''): string {
+function pageChrome(nonce: string, body: string, extraScript = '', bodyClass = ''): string {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -432,7 +617,7 @@ function pageChrome(nonce: string, body: string, extraScript = ''): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data:;">
 <style>${PAGE_STYLES}</style>
 </head>
-<body>
+<body class="${bodyClass}">
 <div class="wrap">
 ${body}
 </div>
@@ -450,6 +635,15 @@ ${body}
     }
     if (e.target.closest('[data-action="reveal"]')) {
       vscode.postMessage({ type: 'revealChange' });
+      return;
+    }
+    const open = e.target.closest('[data-change-name]');
+    if (open) {
+      vscode.postMessage({
+        type: 'openChange',
+        modelIndex: Number(open.getAttribute('data-model-index')),
+        changeName: open.getAttribute('data-change-name'),
+      });
       return;
     }
     const tab = e.target.closest('[data-view]');
