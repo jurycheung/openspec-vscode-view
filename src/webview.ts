@@ -581,8 +581,8 @@ const PAGE_STYLES = `
     padding: 5px 16px; cursor: pointer;
   }
   .viewtoggle .vt.active { background: var(--accent); color: #fff; font-weight: 600; }
-  body[data-view="dag"] .view-pipeline { display: none; }
-  body[data-view="pipeline"] .view-dag { display: none; }
+  body[data-view-mode="dag"] .view-pipeline { display: none; }
+  body[data-view-mode="pipeline"] .view-dag { display: none; }
   .svgwrap {
     overflow: auto; border: 1px solid var(--border); border-radius: 10px;
     padding: 4px; background: var(--vscode-editor-background);
@@ -902,12 +902,15 @@ function renderChangeHtml(
 
   return pageChrome(nonce, body, `
     function setView(v) {
-      document.body.dataset.view = v === 'dag' ? 'dag' : 'pipeline';
+      // 注意：状态键必须与按钮的 data-view 选择器错开——
+      // 若写成 body.dataset.view，body 会带上 data-view 属性，
+      // 任何点击的 closest('[data-view]') 都命中 body，吞掉全部点击分支
+      document.body.dataset.viewMode = v === 'dag' ? 'dag' : 'pipeline';
       document.querySelectorAll('[data-view]').forEach(function (b) {
-        b.classList.toggle('active', b.getAttribute('data-view') === document.body.dataset.view);
+        b.classList.toggle('active', b.getAttribute('data-view') === document.body.dataset.viewMode);
       });
       const s = vscode.getState() || {};
-      s.view = document.body.dataset.view;
+      s.view = document.body.dataset.viewMode;
       vscode.setState(s);
     }
     function selectArtifact(id) {
