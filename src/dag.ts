@@ -47,8 +47,14 @@ export const DAG_GAP_X = 64;
 export const DAG_GAP_Y = 16;
 export const DAG_PAD = 10;
 
-export function computeDagLayout(items: DagNodeInput[]): DagLayout {
-  const byId = new Map(items.map((it) => [it.id, it]));
+/**
+ * 最长路径分层 + 环检测：level = max(依赖层)+1。
+ * 环上分支按 0 层贡献打断（不死循环），其余部分正常布局。
+ */
+function computeLevels(
+  items: DagNodeInput[],
+  byId: Map<string, DagNodeInput>
+): { levels: Map<string, number>; hasCycle: boolean } {
   const levels = new Map<string, number>();
   const visiting = new Set<string>();
   let hasCycle = false;
@@ -84,6 +90,20 @@ export function computeDagLayout(items: DagNodeInput[]): DagLayout {
   for (const it of items) {
     levelOf(it.id);
   }
+  return { levels, hasCycle };
+}
+
+/** 连线着色：依赖已完成 → ok；目标被阻塞且缺失 → miss；其余 → pending */
+function edgeClass(fromStatus: DagStatus, toStatus: DagStatus): DagEdge['cls'] {
+  if (fromStatus === 'done') {
+    return 'ok';
+  }
+  return toStatus === 'blocked' ? 'miss' : 'pending';
+}
+
+export function computeDagLayout(items: DagNodeInput[]): DagLayout {
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const { levels, hasCycle } = computeLevels(items, byId);
 
   const byLevel = new Map<number, DagNode[]>();
   const nodes: DagNode[] = [];
@@ -125,7 +145,7 @@ export function computeDagLayout(items: DagNodeInput[]): DagLayout {
       edges.push({
         from: dep,
         to: it.id,
-        cls: from.status === 'done' ? 'ok' : it.status === 'blocked' ? 'miss' : 'pending',
+        cls: edgeClass(from.status, it.status),
       });
     }
   }

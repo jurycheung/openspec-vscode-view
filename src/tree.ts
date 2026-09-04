@@ -10,6 +10,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ArtifactView, ChangeView } from './core';
+import { STATUS_LABEL } from './core';
 import type { OpenSpecModel } from './openspec';
 
 export type TreeNode =
@@ -53,12 +54,6 @@ export interface FileNode {
   displayPath: string;
 }
 
-const STATUS_LABEL: Record<ArtifactView['status'], string> = {
-  done: '已完成',
-  ready: '可开始',
-  blocked: '被阻塞',
-  skipped: '已跳过',
-};
 
 function statusIcon(status: ArtifactView['status']): vscode.ThemeIcon {
   switch (status) {

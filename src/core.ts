@@ -19,6 +19,14 @@ export interface ArtifactPathSummary {
 
 export type ArtifactState = 'done' | 'skipped' | 'ready' | 'blocked';
 
+/** 阶段状态的统一中文标签（树视图与 Webview 共用，避免两处文案漂移） */
+export const STATUS_LABEL: Record<ArtifactState, string> = {
+  done: '已完成',
+  ready: '可开始',
+  blocked: '被阻塞',
+  skipped: '已跳过',
+};
+
 export interface ArtifactStatusJson {
   id: string;
   outputPath: string;

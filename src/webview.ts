@@ -8,6 +8,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { STATUS_LABEL } from './core';
 import type { ArtifactView, ChangeView, LoadedSchema } from './core';
 import type { OpenSpecModel } from './openspec';
 import {
@@ -433,11 +434,12 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** 视觉元数据（cls/icon）；文案统一取 core.STATUS_LABEL，与树视图共享同一份 */
 const STATUS_META: Record<ArtifactView['status'], { label: string; cls: string; icon: string }> = {
-  done: { label: '已完成', cls: 'done', icon: '✓' },
-  ready: { label: '可开始', cls: 'ready', icon: '●' },
-  blocked: { label: '被阻塞', cls: 'blocked', icon: '!' },
-  skipped: { label: '已跳过', cls: 'skipped', icon: '⊘' },
+  done: { label: STATUS_LABEL.done, cls: 'done', icon: '✓' },
+  ready: { label: STATUS_LABEL.ready, cls: 'ready', icon: '●' },
+  blocked: { label: STATUS_LABEL.blocked, cls: 'blocked', icon: '!' },
+  skipped: { label: STATUS_LABEL.skipped, cls: 'skipped', icon: '⊘' },
 };
 
 function fileIconSvg(): string {
@@ -560,6 +562,10 @@ const PAGE_STYLES = `
     font-size: 12.5px; font-family: var(--vscode-font-family); cursor: pointer;
   }
   button.vsc:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+  button.vsc.secondary {
+    background: var(--vscode-button-secondaryBackground, #3a3d41);
+    color: var(--vscode-button-secondaryForeground, #fff);
+  }
   .foot { margin-top: 18px; color: var(--muted); font-size: 11.5px; }
   .foot code { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; }
   .warnlist { margin: 10px 0 0; padding-left: 18px; color: var(--warn); font-size: 12px; }
@@ -896,7 +902,7 @@ function renderChangeHtml(
   ${warnings.length ? `<ul class="warnlist">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>` : ''}
   <div class="actions">
     <button class="vsc" data-action="refresh">刷新状态</button>
-    <button class="vsc" data-action="reveal" style="background:var(--vscode-button-secondaryBackground,#3a3d41);color:var(--vscode-button-secondaryForeground,#fff)">在资源管理器中显示</button>
+    <button class="vsc secondary" data-action="reveal">在资源管理器中显示</button>
   </div>
   <p class="foot">数据来源：<code>openspec status --all --json</code> · 项目 ${escapeHtml(model.projectLabel)} · change 目录 <code>${escapeHtml(change.changeRoot)}</code></p>`;
 
