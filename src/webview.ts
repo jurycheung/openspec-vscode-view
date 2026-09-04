@@ -819,9 +819,12 @@ function dagViewHtml(change: ChangeView, schema: LoadedSchema | undefined): stri
 
   const nodes = layout.nodes
     .map((n) => {
-      const label = n.id.length > 22 ? `${n.id.slice(0, 21)}…` : n.id;
       const fileCount = fileCountOf.get(n.id) ?? 0;
       const openable = n.status === 'done' && fileCount > 0;
+      // 可打开节点在图上直接标注输出件数量，强化“可点击”暗示
+      const maxLabel = openable ? 17 : 21;
+      const base = n.id.length > maxLabel ? `${n.id.slice(0, maxLabel)}…` : n.id;
+      const label = openable ? `${base} ·${fileCount}件` : base;
       const cls = `dag-node ${n.status}${n.isCurrent ? ' current' : ''}${openable ? ' openable' : ''}`;
       const cx = n.x + DAG_NODE_W / 2;
       const cy = n.y + DAG_NODE_H / 2 + 4;
