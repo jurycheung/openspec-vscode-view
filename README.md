@@ -63,17 +63,29 @@ Project (shown with multi-root workspaces)
 - Progress bar, schema badge and planning-complete state on top; one-click refresh / reveal in Explorer at the bottom
 - Fully theme-aware via VSCode theme variables (dark / light)
 
+### 5. Dependency DAG view (inside the process panel)
+- Toggle between **Pipeline** and **DAG** at the top of the process panel
+- Stages are layered by the longest dependency path — stages on the same layer can run **in parallel**; blocked chains are visible at a glance
+- Edge colors: green = dependency done · gray = dependency pending · **red dashed = target blocked and this dependency missing**
+- Done stage nodes show their output-file count (e.g. `intent ·2`): click to open the file directly, or pick from a QuickPick when a stage has multiple outputs
+- Malformed schemas with circular dependencies never hang the layout — the cycle is broken and the rest renders normally
+
+### 6. Multi-change board (Activity bar → OpenSpec board)
+- A sidebar webview listing **all detected changes**, grouped by project → schema
+- Each row shows status counts, progress and the current stage — **click a row to open its process panel**
+- Stays in sync with the same refresh/reconciliation layers as the tree view
+
 ## Usage
 
 1. Install (either way):
    ```bash
    # Option 1: download the vsix from GitHub Releases (recommended)
-   code --install-extension openspec-vscode-view-0.1.3.vsix
+   code --install-extension openspec-vscode-view-0.2.0.vsix
 
    # Option 2: build from source
    npm install
-   npm run package        # produces openspec-vscode-view-0.1.3.vsix
-   code --install-extension openspec-vscode-view-0.1.3.vsix
+   npm run package        # produces openspec-vscode-view-0.2.0.vsix
+   code --install-extension openspec-vscode-view-0.2.0.vsix
    ```
 2. Make sure the `openspec` CLI is available (`npm i -g @fission-ai/openspec`), or configure:
    - `openspec-vscode-view.cliPath`: path to the CLI executable (default `openspec`)
@@ -102,8 +114,8 @@ node dist/test/smoke.js <real-cli-output.json>   # end-to-end parse check agains
 | `src/scanConfig.ts` | `~/.sef/config.json` read/write, path normalization (~ expansion / absolute-path validation) |
 | `src/openspec.ts` | Root aggregation (workspace + HOME + configured paths), openspec layout detection, schema loading, refresh orchestration, FileSystemWatcher |
 | `src/tree.ts` | Tree view: project → change → stage → output file, click-to-jump |
-| `src/webview.ts` | Process visualization panel: pipeline rendering, message passing (openFile / refresh / reveal) |
-| `src/extension.ts` | Activation entry, command registration (incl. ⚙ scan path configuration), multi-root workspace support |
+| `src/webview.ts` | Process visualization panel: pipeline + dependency DAG rendering, multi-change board, message passing (openFile / openArtifactFiles / refresh / reveal) |
+| `src/extension.ts` | Activation entry: scan-path config flow, reconciliation layers, command registration, multi-root workspace support |
 | `test/smoke.ts` | Smoke tests: fixture assertions + real CLI output replay + scanConfig cases |
 
 The data contract (`ChangeStatus` / `ArtifactStatus`) follows OpenSpec `src/core/artifact-graph/instruction-loader.ts`;

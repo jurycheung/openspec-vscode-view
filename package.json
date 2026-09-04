@@ -2,7 +2,7 @@
   "name": "openspec-vscode-view",
   "displayName": "OpenSpec VSCode View",
   "description": "OpenSpec 变更流程可视化：自动检测（自定义）schema 与变更，按 change 展示阶段与输出件，支持点击跳转与编辑区内可视化",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "publisher": "sef",
   "author": "JuryCheung",
   "license": "MIT",
