@@ -6,6 +6,7 @@
  * 面板随状态模型变化自动重渲染。
  */
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ArtifactView, ChangeView, LoadedSchema } from './core';
 import type { OpenSpecModel } from './openspec';
@@ -325,7 +326,11 @@ export class ProcessViewPanel {
     this.panel.webview.html = this.buildHtml();
   }
 
-  private async onMessage(msg: { type?: string; path?: string }): Promise<void> {
+  private async onMessage(msg: {
+    type?: string;
+    path?: string;
+    artifactId?: string;
+  }): Promise<void> {
     switch (msg.type) {
       case 'openFile': {
         if (!msg.path) {
@@ -334,6 +339,37 @@ export class ProcessViewPanel {
         // beside 与否由 openOutputFile 命令统一决定（单处维护 openBeside 逻辑）
         await vscode.commands.executeCommand('openspec-vscode-view.openOutputFile', msg.path);
         break;
+      }
+      case 'openArtifactFiles': {
+        // 依赖图上的已完成节点：单输出件直接打开，多输出件弹出 QuickPick 选择
+        const change = this.model.getChange(this.changeName);
+        const artifact = change?.artifacts.find((a) => a.id === msg.artifactId);
+        if (!artifact || artifact.files.length === 0) {
+          return;
+        }
+        if (artifact.files.length === 1) {
+          await vscode.commands.executeCommand(
+            'openspec-vscode-view.openOutputFile',
+            artifact.files[0]
+          );
+          return;
+        }
+        const picks = artifact.files.map((f, i) => ({
+          label: `$(file) ${artifact.displayFiles[i] ?? path.basename(f)}`,
+          description: f,
+          filePath: f,
+        }));
+        const picked = await vscode.window.showQuickPick(picks, {
+          placeHolder: `选择要打开的输出件（${artifact.id}，共 ${picks.length} 个）`,
+          matchOnDescription: true,
+        });
+        if (picked) {
+          await vscode.commands.executeCommand(
+            'openspec-vscode-view.openOutputFile',
+            picked.filePath
+          );
+        }
+        return;
       }
       case 'requestRefresh':
         await this.model.refresh().catch(() => {});
@@ -567,6 +603,9 @@ const PAGE_STYLES = `
   .dag-node.current rect { stroke-width: 2.2; animation: dagpulse 2s ease-in-out infinite; }
   .dag-node.current text { fill: var(--accent); font-weight: 600; }
   .dag-node.selected rect { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .dag-node.openable rect { fill: color-mix(in srgb, var(--ok) 10%, transparent); }
+  .dag-node.openable:hover rect { fill: color-mix(in srgb, var(--ok) 20%, transparent); }
+  .dag-node.openable text { text-decoration: underline; text-underline-offset: 2px; }
   .dag-node text {
     fill: var(--vscode-foreground); font-size: 11.5px;
     font-family: var(--vscode-editor-font-family, monospace);
@@ -649,6 +688,14 @@ ${body}
     const tab = e.target.closest('[data-view]');
     if (tab) {
       setView(tab.getAttribute('data-view') ?? 'pipeline');
+      return;
+    }
+    const dagOpen = e.target.closest('[data-dag-open]');
+    if (dagOpen) {
+      vscode.postMessage({
+        type: 'openArtifactFiles',
+        artifactId: dagOpen.getAttribute('data-artifact'),
+      });
       return;
     }
     const dagNode = e.target.closest('[data-artifact]');
@@ -757,6 +804,8 @@ function dagViewHtml(change: ChangeView, schema: LoadedSchema | undefined): stri
   };
 
   const nodeById = new Map(layout.nodes.map((n) => [n.id, n]));
+  // 已完成且有输出件的节点：点击直达（单件直接开，多件 QuickPick）
+  const fileCountOf = new Map(change.artifacts.map((a) => [a.id, a.files.length]));
   const edges = layout.edges
     .map((e) => {
       const f = nodeById.get(e.from);
@@ -771,14 +820,21 @@ function dagViewHtml(change: ChangeView, schema: LoadedSchema | undefined): stri
   const nodes = layout.nodes
     .map((n) => {
       const label = n.id.length > 22 ? `${n.id.slice(0, 21)}…` : n.id;
-      const cls = `dag-node ${n.status}${n.isCurrent ? ' current' : ''}`;
+      const fileCount = fileCountOf.get(n.id) ?? 0;
+      const openable = n.status === 'done' && fileCount > 0;
+      const cls = `dag-node ${n.status}${n.isCurrent ? ' current' : ''}${openable ? ' openable' : ''}`;
       const cx = n.x + DAG_NODE_W / 2;
       const cy = n.y + DAG_NODE_H / 2 + 4;
+      const title = `${escapeHtml(n.id)}（${STATUS_META[n.status].label}）${
+        openable ? ` · 点击打开输出件（${fileCount} 个）` : ''
+      }`;
       return (
-        `<g class="${cls}" data-artifact="${escapeHtml(n.id)}" tabindex="0" role="button">` +
+        `<g class="${cls}" data-artifact="${escapeHtml(n.id)}"${
+          openable ? ' data-dag-open="1"' : ''
+        } tabindex="0" role="button">` +
         `<rect x="${n.x}" y="${n.y}" width="${DAG_NODE_W}" height="${DAG_NODE_H}" rx="9"/>` +
         `<text x="${cx}" y="${cy}" text-anchor="middle">${escapeHtml(label)}</text>` +
-        `<title>${escapeHtml(n.id)}（${STATUS_META[n.status].label}）</title>` +
+        `<title>${title}</title>` +
         `</g>`
       );
     })
@@ -799,7 +855,7 @@ function dagViewHtml(change: ChangeView, schema: LoadedSchema | undefined): stri
   return `
   <div class="svgwrap">${svg}</div>
   ${cycleWarn}
-  <p class="dag-legend">同层阶段可并行 · 连线：<span class="lg-ok">绿＝依赖已完成</span> · <span class="lg-miss">红虚＝依赖缺失</span> · 灰＝依赖进行中</p>
+  <p class="dag-legend">同层阶段可并行 · <span class="lg-ok">绿色节点</span>可点击直达输出件（多件时弹出选择）· 连线：<span class="lg-ok">绿＝依赖已完成</span> · <span class="lg-miss">红虚＝依赖缺失</span> · 灰＝依赖进行中</p>
   <ul class="stepper dag-detail">${detail}</ul>`;
 }
 
